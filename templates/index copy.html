@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home Page</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <header>
+        <h1 class="typing">HomeLink</h1>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('index') }}">Home</a></li>
+                <li><a href="{{ url_for('compose') }}">Compose Email</a></li>
+                {% if 'credentials' in session %}
+                    <li><a href="{{ url_for('logout') }}">Logout</a></li>
+                {% else %}
+                    <li><a href="{{ url_for('login') }}">Login</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+    </header>
+    <div class="container">
+        <div class="emails">
+            <h2>Inbox</h2>
+            <form id="email-form">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Select</th>
+                            <th>From</th>
+                            <th>Subject</th>
+                            <th>Body</th>
+                        </tr>
+                    </thead>
+                    <tbody id="email-list">
+                        {% for email in emails %}
+                        <tr>
+                            <td><input type="checkbox" value="{{ loop.index0 }}"></td>
+                            <td>{{ email[0] }}</td>
+                            <td>{{ email[2] }}</td>
+                            <td class="clickable">{{ email[3] }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <button type="button" id="delete-selected">Delete Selected</button>
+            </form>
+        </div>
+    </div>
+    <div id="email-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 id="modal-subject"></h2>
+            <p id="modal-body"></p>
+        </div>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const phrases = ["Email + Privacy", "preventing phishing", "Protect your organization", "Future of emails", "For everyone"];
+            const typingElement = document.querySelector('.typing');
+            let phraseIndex = 0;
+            let charIndex = 0;
+            let isDeleting = false;
+            const typingSpeed = 100;
+            const deletingSpeed = 50;
+            const delayBetweenPhrases = 2000;
+            const homeLinkDelay = 3500; // Longer delay for "HomeLink"
+
+            function typeWriter() {
+                const currentPhrase = phrases[phraseIndex];
+                if (isDeleting) {
+                    typingElement.textContent = currentPhrase.substring(0, charIndex - 1) + "\u00A0";
+                    charIndex--;
+                    if (charIndex === 0) {
+                        isDeleting = false;
+                        phraseIndex = (phraseIndex + 1) % phrases.length;
+                        setTimeout(typeWriter, typingSpeed);
+                    } else {
+                        setTimeout(typeWriter, deletingSpeed);
+                    }
+                } else {
+                    typingElement.textContent = currentPhrase.substring(0, charIndex + 1) + "\u00A0";
+                    charIndex++;
+                    if (charIndex === currentPhrase.length) {
+                        isDeleting = true;
+                        const delay = currentPhrase === "DeceMail" ? homeLinkDelay : delayBetweenPhrases;
+                        setTimeout(typeWriter, delay);
+                    } else {
+                        setTimeout(typeWriter, typingSpeed);
+                    }
+                }
+            }
+            typeWriter();
+
+            const emailList = document.getElementById('email-list');
+            const emails_local = JSON.parse(localStorage.getItem('emails')) || [];
+            const blockchainEmails = {{ emails|tojson }};
+            blockchainEmails.forEach(email => {
+                saveEmail(email[2], email[3], true);
+            });
+
+            function renderEmails() {
+                emails_local.forEach((email, index) => {
+                    const row = document.createElement('tr');
+                    const selectCell = document.createElement('td');
+                    const fromCell = document.createElement('td');
+                    const subjectCell = document.createElement('td');
+                    const bodyCell = document.createElement('td');
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.value = index;
+                    selectCell.appendChild(checkbox);
+                    fromCell.textContent = email.from;
+                    subjectCell.textContent = email.subject;
+                    bodyCell.textContent = email.body.length > 50 ? email.body.substring(0, 50) + '...' : email.body;
+                    bodyCell.classList.add('clickable');
+                    bodyCell.addEventListener('click', () => showModal(email.subject, email.body));
+                    row.appendChild(selectCell);
+                    row.appendChild(fromCell);
+                    row.appendChild(subjectCell);
+                    row.appendChild(bodyCell);
+                    emailList.appendChild(row);
+                });
+            }
+
+            function saveEmail(subject, body, isBlockchain = false) {
+                const emailExists = emails.some(email => email.subject === subject && email.body === body);
+                if (!emailExists) {
+                    emails.push({ subject, body, isBlockchain });
+                    localStorage.setItem('emails', JSON.stringify(emails));
+                    renderEmails();
+                }
+            }
+
+            function deleteSelectedEmails() {
+                const selectedCheckboxes = document.querySelectorAll('#email-list input[type="checkbox"]:checked');
+                const selectedIndexes = Array.from(selectedCheckboxes).map(checkbox => parseInt(checkbox.value));
+                const newEmails = emails.filter((email, index) => !selectedIndexes.includes(index) || email.isBlockchain);
+                localStorage.setItem('emails', JSON.stringify(newEmails));
+                emails.length = 0;
+                emails.push(...newEmails);
+                renderEmails();
+            }
+
+            function showModal(subject, body) {
+                const modal = document.getElementById('email-modal');
+                const modalSubject = document.getElementById('modal-subject');
+                const modalBody = document.getElementById('modal-body');
+                modalSubject.textContent = subject;
+                modalBody.textContent = body;
+                modal.style.display = 'block';
+            }
+
+            const modal = document.getElementById('email-modal');
+            const span = document.getElementsByClassName('close')[0];
+            span.onclick = function() {
+                modal.style.display = 'none';
+            }
+            window.onclick = function(event) {
+                if (event.target == modal) {
+                    modal.style.display = 'none';
+                }
+            }
+
+            document.getElementById('delete-selected').addEventListener('click', deleteSelectedEmails);
+
+            // Save the current email from the server
+            const currentEmail = "{{ email }}";
+            if (currentEmail) {
+                const [subject, body] = currentEmail.split(' and body is ');
+                saveEmail(subject.replace('Subject is ', ''), body);
+            }
+
+            renderEmails();
+        });
+    </script>
+    <style>
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgb(0,0,0);
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .close:hover,
+        .close:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .clickable {
+            cursor: pointer;
+        }
+    </style>
+</body>
+</html>

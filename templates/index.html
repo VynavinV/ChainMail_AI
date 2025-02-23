@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home Page</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+</head>
+<body>
+    <header>
+        <h1 class="typing">Decentralized Email System</h1>
+    </header>
+    <div class="container full-width">
+        <div class="sidebar widget">
+            <nav>
+                <ul>
+                    <li><a href="{{ url_for('index') }}"><i class="fas fa-home"></i> Home</a></li>
+                    <li><a href="{{ url_for('compose') }}"><i class="fas fa-edit"></i> Compose Email</a></li>
+                    {% if 'credentials' in session %}
+                        <li><a href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
+                    {% else %}
+                        <li><a href="{{ url_for('login') }}"><i class="fas fa-sign-in-alt"></i> Login</a></li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+        <div class="emails widget reduced-width" style="margin-left: 20px;">
+            <div id="email-list-container">
+                <form id="email-form">
+                    <table class="full-width">
+                        <thead>
+                            <tr>
+                                <th style="width: 20%;">Select</th>
+                                <th style="width: 20%;">From</th>
+                                <th style="width: 20%;">Subject</th>
+                                <th style="width: 40%;">Body</th>
+                            </tr>
+                        </thead>
+                        <tbody id="email-list">
+                            {% for email in emails %}
+                            <tr>
+                                <td><input type="checkbox" value="{{ loop.index0 }}"></td>
+                                <td>{{ email[0] }}</td>
+                                <td>{{ email[2] }}</td>
+                                <td class="clickable" onclick="showEmail('{{ email[0] }}', '{{ email[2] }}', '{{ email[3] }}')">{{ email[3] }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    <button type="button" id="delete-selected" style="margin-top: 20px;">Delete Selected</button>
+                </form>
+            </div>
+            <div id="email-detail" class="email-detail" style="display: none;">
+                <button onclick="showEmailList()">Back</button>
+                <h2 id="detail-subject"></h2>
+                <p id="detail-from"></p>
+                <p id="detail-body"></p>
+            </div>
+        </div>
+    </div>
+    <div id="email-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 id="modal-subject"></h2>
+            <p id="modal-body"></p>
+        </div>
+    </div>
+    <div id="email-widget" class="widget email-widget" style="display: none;">
+        <span class="close" onclick="closeEmailWidget()">&times;</span>
+        <h2 id="widget-subject"></h2>
+        <p id="widget-body"></p>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const phrases = ["Decentralized Email System", "Blockchain to Encrypt Emails", "Detecting Spam Emails", "Secure and Private Communication"];
+            const typingElement = document.querySelector('.typing');
+            let phraseIndex = 0;
+            let charIndex = 0;
+            let isDeleting = false;
+            const typingSpeed = 100;
+            const deletingSpeed = 50;
+            const delayBetweenPhrases = 3000; // Increased delay between phrases
+            const homeLinkDelay = 3500; // Longer delay for "HomeLink"
+
+            function typeWriter() {
+                const currentPhrase = phrases[phraseIndex];
+                if (isDeleting) {
+                    typingElement.textContent = currentPhrase.substring(0, charIndex - 1) + "\u00A0";
+                    charIndex--;
+                    if (charIndex === 0) {
+                        isDeleting = false;
+                        phraseIndex = (phraseIndex + 1) % phrases.length;
+                        setTimeout(typeWriter, typingSpeed);
+                    } else {
+                        setTimeout(typeWriter, deletingSpeed);
+                    }
+                } else {
+                    typingElement.textContent = currentPhrase.substring(0, charIndex + 1) + "\u00A0";
+                    charIndex++;
+                    if (charIndex === currentPhrase.length) {
+                        isDeleting = true;
+                        const delay = currentPhrase === "Decentralized Email System" ? homeLinkDelay : delayBetweenPhrases;
+                        setTimeout(typeWriter, delay);
+                    } else {
+                        setTimeout(typeWriter, typingSpeed);
+                    }
+                }
+            }
+            typeWriter();
+
+            const emailList = document.getElementById('email-list');
+            const emails_local = JSON.parse(localStorage.getItem('emails')) || [];
+            const blockchainEmails = {{ emails|tojson }};
+            blockchainEmails.forEach(email => {
+                saveEmail(email[2], email[3], true);
+            });
+
+            function renderEmails() {
+                //zemailList.innerHTML = ''; // Clear the list before rendering
+                emails_local.forEach((email, index) => {
+                    const row = document.createElement('tr');
+                    const selectCell = document.createElement('td');
+                    const fromCell = document.createElement('td');
+                    const subjectCell = document.createElement('td');
+                    const bodyCell = document.createElement('td');
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.value = index;
+                    selectCell.appendChild(checkbox);
+                    fromCell.textContent = email.from;
+                    subjectCell.textContent = email.subject;
+                    bodyCell.textContent = email.body.length > 50 ? email.body.substring(0, 50) + '...' : email.body;
+                    bodyCell.classList.add('clickable');
+                    bodyCell.style.whiteSpace = 'nowrap';
+                    bodyCell.style.overflow = 'hidden';
+                    bodyCell.style.textOverflow = 'ellipsis';
+                    bodyCell.addEventListener('click', () => showEmail(email.from, email.subject, email.body));
+                    row.appendChild(selectCell);
+                    row.appendChild(fromCell);
+                    row.appendChild(subjectCell);
+                    row.appendChild(bodyCell);
+                    emailList.appendChild(row);
+                });
+            }
+
+            function saveEmail(subject, body, isBlockchain = false) {
+                const emailExists = emails_local.some(email => email.subject === subject && email.body === body);
+                if (!emailExists) {
+                    emails_local.push({ subject, body, isBlockchain });
+                    localStorage.setItem('emails', JSON.stringify(emails_local));
+                    renderEmails();
+                }
+            }
+
+            function deleteSelectedEmails() {
+                const selectedCheckboxes = document.querySelectorAll('#email-list input[type="checkbox"]:checked');
+                const selectedIndexes = Array.from(selectedCheckboxes).map(checkbox => parseInt(checkbox.value));
+                const newEmails = emails.filter((email, index) => !selectedIndexes.includes(index) || email.isBlockchain);
+                localStorage.setItem('emails', JSON.stringify(newEmails));
+                emails.length = 0;
+                emails.push(...newEmails);
+                renderEmails();
+            }
+
+            function showModal(subject, body) {
+                const modal = document.getElementById('email-modal');
+                const modalSubject = document.getElementById('modal-subject');
+                const modalBody = document.getElementById('modal-body');
+                modalSubject.textContent = subject;
+                modalBody.textContent = body;
+                modal.style.display = 'block';
+            }
+
+            const modal = document.getElementById('email-modal');
+            const span = document.getElementsByClassName('close')[0];
+            span.onclick = function() {
+                modal.style.display = 'none';
+            }
+            window.onclick = function(event) {
+                if (event.target == modal) {
+                    modal.style.display = 'none';
+                }
+            }
+
+            document.getElementById('delete-selected').addEventListener('click', deleteSelectedEmails);
+
+            // Save the current email from the server
+            const currentEmail = "{{ email }}";
+            if (currentEmail) {
+                const [subject, body] = currentEmail.split(' and body is ');
+                saveEmail(subject.replace('Subject is ', ''), body);
+            }
+
+            renderEmails();
+        });
+
+        function showEmail(from, subject, body) {
+            document.getElementById('email-list-container').style.display = 'none';
+            document.getElementById('email-detail').style.display = 'block';
+            document.getElementById('detail-subject').textContent = subject;
+            document.getElementById('detail-from').textContent = `From: ${from}`;
+            document.getElementById('detail-body').textContent = body;
+        }
+
+        function showEmailList() {
+            document.getElementById('email-list-container').style.display = 'block';
+            document.getElementById('email-detail').style.display = 'none';
+        }
+
+        function closeEmailWidget() {
+            const emailWidget = document.getElementById('email-widget');
+            emailWidget.style.display = 'none';
+        }
+    </script>
+    <style>
+        /* Removed modal CSS */
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        form {
+            margin-top: 20px;
+        }
+        .clickable {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 100%;
+        }
+        .sidebar {
+            width: 20%;
+            padding: 1rem;
+            background-color: #f4f4f9;
+        }
+        .reduced-width {
+            width: 80%;
+            margin-left: 20px;
+        }
+        .widget {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .email-widget {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1000;
+            width: 80%;
+            max-width: 800px;
+            height: auto;
+            max-height: 80%;
+            overflow-y: auto;
+        }
+        .email-widget .close {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 24px;
+            cursor: pointer;
+        }
+        .email-detail {
+            display: flex;
+            flex-direction: column;
+        }
+        .email-detail button {
+            align-self: flex-start;
+            margin-bottom: 20px;
+        }
+    </style>
+</body>
+</html>
